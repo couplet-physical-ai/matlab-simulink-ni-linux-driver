@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synthetic controller simulator</title>
+<link rel="stylesheet" href="/static/brand.css">
+<style>
+  :root { --good: #0ca30c; --critical: #d03b3b; }
+  body { margin: 0; background: var(--sim-neutral-100); color: var(--sim-body-text); font-family: var(--sim-font-sans); }
+  .sim-header-data { background: var(--sim-white); border-bottom: 1px solid var(--sim-border); padding: 0.75rem 1.5rem;
+    display: flex; align-items: center; gap: 0.75rem; color: var(--sim-neutral-900); }
+  .sim-header-data h1 { font-size: 1rem; font-weight: 600; margin: 0; }
+  .sim-header-data .spacer { flex: 1; }
+  .badge { font-size: 0.75rem; font-weight: 600; border: 1px solid var(--sim-neutral-300); border-radius: 999px;
+    padding: 0.2rem 0.6rem; color: var(--sim-neutral-700); background: var(--sim-neutral-100); }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1.5rem 2rem; display: grid; gap: 1rem; }
+  .panel { background: var(--sim-white); border: 1px solid var(--sim-border); border-radius: 0.5rem; padding: 1rem 1.25rem; }
+  .panel h2 { font-size: 0.875rem; font-weight: 600; color: var(--sim-neutral-900); margin: 0 0 0.75rem; }
+  .guard { display: flex; align-items: center; gap: 1rem; border-left: 6px solid var(--sim-neutral-300); }
+  .guard.ok { border-left-color: var(--good); }
+  .guard.latched { border-left-color: var(--critical); }
+  .guard .icon { font-size: 1.75rem; line-height: 1; width: 2rem; text-align: center; }
+  .guard.ok .icon { color: var(--good); }
+  .guard.latched .icon { color: var(--critical); }
+  .guard .title { font-size: 1.25rem; font-weight: 700; color: var(--sim-neutral-900); }
+  .guard .sub { font-size: 0.875rem; margin-top: 0.15rem; }
+  .sim-stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+  .sim-stat { background: var(--sim-white); border: 1px solid var(--sim-border); border-radius: 0.5rem; padding: 1rem 1.25rem; }
+  .sim-stat-label { font-size: 0.75rem; color: var(--sim-muted-fg); text-transform: uppercase; letter-spacing: 0.04em; }
+  .sim-stat-value { font-size: 1.75rem; font-weight: 700; color: var(--sim-neutral-900); margin-top: 0.25rem; font-variant-numeric: tabular-nums; }
+  .sim-stat-sub { font-size: 0.75rem; color: var(--sim-muted-fg); margin-top: 0.25rem; }
+  .chart-wrap { position: relative; }
+  svg { display: block; width: 100%; height: 260px; }
+  .tip { position: absolute; pointer-events: none; background: var(--sim-white); border: 1px solid var(--sim-neutral-300);
+    border-radius: 0.375rem; padding: 0.4rem 0.6rem; font-size: 0.75rem; color: var(--sim-neutral-900);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+  button { font-family: var(--sim-font-sans); font-size: 0.875rem; font-weight: 600; border-radius: 0.375rem;
+    padding: 0.55rem 1rem; cursor: pointer; border: 1px solid var(--sim-neutral-300); background: var(--sim-white); color: var(--sim-neutral-900); }
+  button.primary { background: var(--sim-accent); border-color: var(--sim-accent); color: var(--sim-black); }
+  button:focus-visible { outline: 2px solid var(--sim-neutral-900); outline-offset: 2px; }
+  .note { font-size: 0.75rem; color: var(--sim-muted-fg); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--sim-border); }
+  th { color: var(--sim-neutral-700); font-weight: 600; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  details summary { cursor: pointer; font-size: 0.8rem; color: var(--sim-neutral-700); margin-top: 0.5rem; }
+  .stale { color: var(--critical); font-weight: 600; }
+  main > *, .sim-stat-strip > *, .two > * { min-width: 0; }
+  @media (max-width: 760px) {
+    main { padding: 1rem; }
+    .sim-stat-strip { grid-template-columns: 1fr 1fr; }
+    .two { grid-template-columns: 1fr; }
+    .sim-header-data { padding: 0.75rem 1rem; }
+  }
+</style>
+</head>
+<body>
+<header class="ex-header-data">
+  <h1>Synthetic controller simulator</h1>
+  <span class="spacer"></span>
+  <span class="badge" title="No NI hardware, heater or blower is connected">SIMULATION · no hardware</span>
+</header>
+<main>
+  <section class="panel guard" id="guard" aria-live="polite">
+    <div class="icon" id="guard-icon" aria-hidden="true">…</div>
+    <div>
+      <div class="title" id="guard-title">Connecting…</div>
+      <div class="sub" id="guard-sub"></div>
+    </div>
+  </section>
+
+  <section class="ex-stat-strip" aria-label="Live values">
+    <div class="ex-stat"><div class="ex-stat-label">Temperature</div><div class="ex-stat-value" id="s-temp">–</div><div class="ex-stat-sub" id="s-temp-sub">setpoint –</div></div>
+    <div class="ex-stat"><div class="ex-stat-label">Heater (applied)</div><div class="ex-stat-value" id="s-heat">–</div><div class="ex-stat-sub" id="s-heat-sub">controller asks –</div></div>
+    <div class="ex-stat"><div class="ex-stat-label">Blower (applied)</div><div class="ex-stat-value" id="s-blow">–</div><div class="ex-stat-sub">guardian forces 100% when latched</div></div>
+    <div class="ex-stat"><div class="ex-stat-label">Controller heartbeat</div><div class="ex-stat-value" id="s-hb">–</div><div class="ex-stat-sub" id="s-hb-sub">–</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Temperature, last 10 minutes (°C)</h2>
+    <div class="chart-wrap" id="chart-wrap">
+      <svg id="chart" role="img" aria-label="Temperature over the last 10 minutes"></svg>
+      <div class="tip" id="tip"></div>
+    </div>
+    <details><summary>Show data table</summary><div style="max-height:220px;overflow:auto"><table id="data-table"><thead><tr><th>Time</th><th>Temperature °C</th><th>Heater %</th><th>Guardian</th></tr></thead><tbody></tbody></table></div></details>
+  </section>
+
+  <section class="two">
+    <div class="panel">
+      <h2>Operator</h2>
+      <div class="row">
+        <button class="primary" id="btn-reset">Operator reset</button>
+        <button id="btn-fault">Inject sensor fault</button>
+      </div>
+      <p class="note" id="op-msg">Reset is accepted only while the controller is running healthy and every input is good. A crashed, frozen or faulted controller must be restarted first (on the bench host: <code>docker compose -f docker/compose.yml restart controller</code>).</p>
+    </div>
+    <div class="panel">
+      <h2>Guardian trips</h2>
+      <table id="trips"><thead><tr><th>Time</th><th>Reason</th><th>After last heartbeat</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+  <p class="note">Software simulation of the controller runtime and an independent guardian (repo: matlab-simulink-ni-linux-driver). The proportional law, plant and timings are illustrative. This page cannot reach any real NI device.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => (v == null || !isFinite(v) ? "–" : Number(v).toFixed(d));
+const ago = (ms) => (ms < 60000 ? Math.round(ms / 1000) + " s ago" : Math.round(ms / 60000) + " min ago");
+let last = null, sensorFault = false, history = { samples: [], setpoint_c: 40 };
+
+function setText(id, text) { $(id).textContent = text; }
+
+async function post(path) {
+  const r = await fetch(path, { method: "POST" });
+  return r.ok;
+}
+$("btn-reset").addEventListener("click", async () => {
+  const before = last ? last.reset_results.length : 0;
+  await post("/operator-reset");
+  setText("op-msg", "Reset requested…");
+  setTimeout(async () => {
+    const s = await (await fetch("/status")).json();
+    const r = s.reset_results.length > before ? s.reset_results[s.reset_results.length - 1] : null;
+    setText("op-msg", r ? (r.accepted ? "Reset accepted: heat is permitted again." : "Reset rejected: the controller is not running healthy (restart it first) or an input is bad.")
+                        : "No heartbeat arrived to evaluate the reset; is the controller running?");
+  }, 700);
+});
+$("btn-fault").addEventListener("click", async () => {
+  await post("/sensor-fault?on=" + (sensorFault ? "0" : "1"));
+});
+
+function renderStatus(s) {
+  last = s;
+  sensorFault = s.sensor_fault;
+  const hbAge = s.last_hb_ms == null ? null : s.now_ms - s.last_hb_ms;
+  const g = $("guard");
+  g.classList.toggle("ok", !s.latched);
+  g.classList.toggle("latched", s.latched);
+  setText("guard-icon", s.latched ? "✕" : "✓");
+  setText("guard-title", s.latched ? "Guardian LATCHED: heater off, blower at maximum" : "Heat permitted: guardian clear");
+  setText("guard-sub", s.latched ? "Reason: " + s.reason.replaceAll("_", " ").toLowerCase() + ". Only an operator reset clears it." : "Heartbeat healthy; the guardian trips if it goes stale for more than " + s.guard_stale_ms + " ms.");
+  setText("s-temp", fmt(s.temperature_c) + " °C");
+  setText("s-temp-sub", "setpoint " + fmt(s.setpoint_c, 0) + " °C");
+  setText("s-heat", fmt(s.eff_heater * 100, 0) + "%");
+  setText("s-heat-sub", "controller asks " + fmt(s.cmd_heater * 100, 0) + "%");
+  setText("s-blow", fmt(s.eff_blower * 100, 0) + "%");
+  if (hbAge == null) { setText("s-hb", "none"); setText("s-hb-sub", "no controller seen yet"); }
+  else {
+    const el = $("s-hb");
+    const live = hbAge < 1000, healthy = live && s.controller_running && !s.controller_fault;
+    el.textContent = !live ? "stale" : healthy ? "running" : "faulted";
+    el.className = "ex-stat-value" + (healthy ? "" : " stale");
+    setText("s-hb-sub", (live && !healthy ? "restart the controller to clear · " : "") + "seq " + s.controller_seq + " · " + hbAge + " ms ago");
+  }
+  $("btn-fault").textContent = s.sensor_fault ? "Clear sensor fault" : "Inject sensor fault";
+  const tb = $("trips").querySelector("tbody");
+  tb.replaceChildren();
+  s.trips.slice(-6).reverse().forEach((t) => {
+    const tr = document.createElement("tr");
+    [ago(s.now_ms - t.t_ms), t.reason.replaceAll("_", " ").toLowerCase(),
+     t.last_hb_ms == null ? "–" : (t.t_ms - t.last_hb_ms) + " ms"].forEach((v) => {
+      const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  if (!s.trips.length) { const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 3; td.textContent = "No trips since start"; tr.appendChild(td); tb.appendChild(tr); }
+}
+
+const NS = "http://www.w3.org/2000/svg";
+function el(name, attrs, parent) {
+  const e = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function renderChart() {
+  const svg = $("chart"), pts = history.samples;
+  const W = Math.max(svg.clientWidth || 800, 240), H = 260, m = { l: 44, r: 16, t: 12, b: 26 };  // never collapse mid-resize
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.replaceChildren();
+  if (pts.length < 2) { const t = el("text", { x: m.l, y: H / 2, fill: "#525866", "font-size": 12 }, svg); t.textContent = "Collecting data…"; return; }
+  const t0 = pts[0].t_ms, t1 = pts[pts.length - 1].t_ms;
+  const temps = pts.map((p) => p.temperature_c).concat([history.setpoint_c]);
+  let lo = Math.floor(Math.min(...temps) - 1), hi = Math.ceil(Math.max(...temps) + 1);
+  const x = (t) => m.l + ((t - t0) / Math.max(1, t1 - t0)) * (W - m.l - m.r);
+  const y = (v) => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+  const step = Math.max(1, Math.ceil((hi - lo) / 5));
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "#E2E4E9", "stroke-width": 1 }, svg);
+    const tx = el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end", fill: "#525866", "font-size": 11 }, svg); tx.textContent = v;
+  }
+  [[t0, "-" + Math.round((t1 - t0) / 60000) + " min"], [t1, "now"]].forEach(([t, lab], i) => {
+    const tx = el("text", { x: x(t), y: H - 6, "text-anchor": i ? "end" : "start", fill: "#525866", "font-size": 11 }, svg); tx.textContent = lab;
+  });
+  // latched intervals as a recessive band
+  let start = null;
+  pts.forEach((p, i) => {
+    if (p.latched && start == null) start = p.t_ms;
+    if ((!p.latched || i === pts.length - 1) && start != null) {
+      el("rect", { x: x(start), y: m.t, width: Math.max(1, x(p.t_ms) - x(start)), height: H - m.t - m.b, fill: "#F6F8FA" }, svg);
+      start = null;
+    }
+  });
+  const sy = y(history.setpoint_c);
+  el("line", { x1: m.l, x2: W - m.r, y1: sy, y2: sy, stroke: "#31353F", "stroke-width": 1, "stroke-dasharray": "4 4" }, svg);
+  const sl = el("text", { x: W - m.r, y: sy - 6, "text-anchor": "end", fill: "#31353F", "font-size": 11 }, svg); sl.textContent = "setpoint " + history.setpoint_c + " °C";
+  const d = pts.map((p, i) => (i ? "L" : "M") + x(p.t_ms).toFixed(1) + "," + y(p.temperature_c).toFixed(1)).join("");
+  el("path", { d, fill: "none", stroke: "#182332", "stroke-width": 4, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+  el("path", { d, fill: "none", stroke: "#2462ad", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+  const hair = el("line", { y1: m.t, y2: H - m.b, stroke: "#868C98", "stroke-width": 1, visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 4, fill: "#2462ad", stroke: "#182332", "stroke-width": 2, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, svg);
+  const tip = $("tip");
+  hit.addEventListener("pointermove", (ev) => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (W / r.width);
+    let best = pts[0];
+    for (const p of pts) if (Math.abs(x(p.t_ms) - px) < Math.abs(x(best.t_ms) - px)) best = p;
+    hair.setAttribute("x1", x(best.t_ms)); hair.setAttribute("x2", x(best.t_ms)); hair.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", x(best.t_ms)); dot.setAttribute("cy", y(best.temperature_c)); dot.setAttribute("visibility", "visible");
+    tip.textContent = `${ago(t1 - best.t_ms)} · ${fmt(best.temperature_c, 2)} °C · heater ${fmt(best.eff_heater * 100, 0)}% · ${best.latched ? "latched" : "clear"}`;
+    tip.style.display = "block";
+    const left = (x(best.t_ms) / W) * r.width;
+    tip.style.left = Math.min(left + 12, r.width - tip.offsetWidth - 4) + "px";
+    tip.style.top = "8px";
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; hair.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+  const tb = $("data-table").querySelector("tbody");
+  tb.replaceChildren();
+  pts.slice(-60).reverse().forEach((p) => {
+    const tr = document.createElement("tr");
+    [ago(t1 - p.t_ms), fmt(p.temperature_c, 2), fmt(p.eff_heater * 100, 0), p.latched ? "latched" : "clear"].forEach((v) => {
+      const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+}
+
+async function pollStatus() {
+  try { renderStatus(await (await fetch("/status")).json()); }
+  catch { setText("guard-title", "Plant simulator unreachable"); }
+}
+async function pollHistory() {
+  try { history = await (await fetch("/history")).json(); renderChart(); } catch {}
+}
+pollStatus(); pollHistory();
+setInterval(pollStatus, 500);
+setInterval(pollHistory, 2000);
+window.addEventListener("resize", renderChart);
+</script>
+</body>
+</html>

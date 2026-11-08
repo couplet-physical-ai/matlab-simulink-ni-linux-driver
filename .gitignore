@@ -1,0 +1,41 @@
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Vendor/proprietary software and generated artifacts
+*.deb
+*.rpm
+*.exe
+*.dll
+*.so
+*.dylib
+*.vi
+*.lvproj
+slprj/
+*_ert_rtw/
+*_grt_rtw/
+*.mex*
+
+# Captures, logs, measurements and build output
+captures/
+measurements/
+logs/
+build/
+dist/
+*.log
+*.csv
+*.parquet
+__pycache__/
+.pytest_cache/
+.venv/
+.DS_Store
+runtime/build/
+# Locally generated model packages (only the bundled synthetic controller is tracked)
+runtime/model/*
+!runtime/model/controller/
+docker/.env

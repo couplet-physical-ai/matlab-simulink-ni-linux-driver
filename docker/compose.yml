@@ -1,0 +1,23 @@
+# Synthetic fault-injection bench: C controller runtime + independent plant/guardian.
+# Run from the repo root:  python3 tools/fault_campaign.py
+name: ni-sim
+services:
+  plant:
+    build: {context: .., dockerfile: docker/plant/Dockerfile}
+    environment: {PLANT_BIND: 0.0.0.0}   # container network only; see ports
+    ports: ["127.0.0.1:18080:8080"]
+    networks: [ctrl]
+  controller:
+    build:
+      context: ..
+      dockerfile: docker/controller/Dockerfile
+      args: {MODEL: "${BENCH_MODEL:-controller}"}   # synthetic model only
+    ulimits: {memlock: -1}
+    command: ["--period-ms", "${BENCH_PERIOD_MS:-10}", "--hal-arg", "plant:47000", "--stats", "/stats/ctrl-stats.json"]
+    init: true            # tini as PID 1, so an in-container SIGKILL is a real crash
+    restart: on-failure   # stands in for a systemd Restart=on-failure policy
+    depends_on: [plant]
+    volumes: ["../build/stats:/stats"]
+    networks: [ctrl]
+networks:
+  ctrl: {}

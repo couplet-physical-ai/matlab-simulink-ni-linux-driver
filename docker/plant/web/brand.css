@@ -1,0 +1,14 @@
+/* Neutral, offline simulation dashboard palette. No hosted fonts or assets. */
+:root {
+  --sim-neutral-900: #182332;
+  --sim-neutral-700: #36465a;
+  --sim-neutral-300: #cad1da;
+  --sim-neutral-100: #f4f6f8;
+  --sim-white: #fff;
+  --sim-black: #13202d;
+  --sim-border: #dce2e8;
+  --sim-body-text: #36465a;
+  --sim-muted-fg: #536273;
+  --sim-accent: #2462ad;
+  --sim-font-sans: system-ui, -apple-system, sans-serif;
+}
